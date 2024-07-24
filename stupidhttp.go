@@ -2,6 +2,7 @@ package stupidhttp
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,17 @@ import (
 type MethodType int
 
 type HandleFunc func(*Request) (*Response, error)
+
+var (
+	NotFoundResponse = &Response{
+		StatusCode: 404,
+		Status:     "Not Found",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Headers:    map[string]string{"Content-Type": "text/plain"},
+		Body:       bytes.NewBufferString("404 Not Found"),
+	}
+)
 
 const (
 	MethodGet MethodType = iota
@@ -34,7 +46,10 @@ type Request struct {
 type Response struct {
 	Headers    map[string]string
 	StatusCode int
+	Status     string
 	Body       io.ReadCloser
+	ProtoMajor int
+	ProtoMinor int
 }
 
 type Route struct {
@@ -44,12 +59,12 @@ type Route struct {
 
 type Config struct {
 	MaxHeaderSize int
+	Address       string
 }
 
 type Server struct {
-	Routes  map[string]Route
-	Address string
-	Config  Config
+	Routes map[string]Route
+	Config Config
 }
 
 func (s *Server) AddHandler(path string, method MethodType, handlerFunc HandleFunc) {
@@ -59,8 +74,15 @@ func (s *Server) AddHandler(path string, method MethodType, handlerFunc HandleFu
 	}
 }
 
+func NewServer(config Config) *Server {
+	return &Server{
+		Routes: make(map[string]Route),
+		Config: config,
+	}
+}
+
 func (s *Server) Start() error {
-	l, err := net.Listen("tcp", s.Address)
+	l, err := net.Listen("tcp", s.Config.Address)
 	if err != nil {
 		return err
 	}
@@ -182,8 +204,31 @@ func parseHTTPProto(proto string) (int, int, error) {
 	return major, minor, nil
 }
 
-func (s *Server) returnResponse(resp *Response) error {
-	return nil
+func (s *Server) writeResponse(c net.Conn, resp *Response) error {
+	reqLine := fmt.Sprintf("HTTP/%d.%d %d %s\r\n", resp.ProtoMajor, resp.ProtoMinor, resp.StatusCode, resp.Status)
+
+	_, err := c.Write([]byte(reqLine))
+	if err != nil {
+		return err
+	}
+
+	for key, val := range resp.Headers {
+		_, err = c.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, val)))
+		if err != nil {
+			return err
+		}
+	}
+
+	// signal end of headers
+	_, err = c.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+
+	if resp.Body != nil {
+		_, err = io.Copy(c, resp.Body)
+	}
+	return err
 }
 
 func (s *Server) handleConn(c net.Conn) error {
@@ -198,6 +243,9 @@ func (s *Server) handleConn(c net.Conn) error {
 		// TODO: return p
 		return err
 	}
+	defer request.Body.Close()
+
+	// find the correct method
 
 	return nil
 }
