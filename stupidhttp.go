@@ -2,7 +2,6 @@ package stupidhttp
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +12,7 @@ import (
 
 type MethodType int
 
-type HandleFunc func(*Request) (*Response, error)
+type HandleFunc func(*Request) *Response
 
 var (
 	NotFoundResponse = &Response{
@@ -22,7 +21,6 @@ var (
 		ProtoMajor: 1,
 		ProtoMinor: 1,
 		Headers:    map[string]string{"Content-Type": "text/plain"},
-		Body:       bytes.NewBufferString("404 Not Found"),
 	}
 )
 
@@ -53,8 +51,7 @@ type Response struct {
 }
 
 type Route struct {
-	Method     MethodType
-	HandleFunc func(*Request) (*Response, error)
+	HandleFunc HandleFunc
 }
 
 type Config struct {
@@ -63,20 +60,19 @@ type Config struct {
 }
 
 type Server struct {
-	Routes map[string]Route
+	routes map[string]Route
 	Config Config
 }
 
-func (s *Server) AddHandler(path string, method MethodType, handlerFunc HandleFunc) {
-	s.Routes[path] = Route{
-		Method:     method,
+func (s *Server) AddHandler(path string, handlerFunc HandleFunc) {
+	s.routes[path] = Route{
 		HandleFunc: handlerFunc,
 	}
 }
 
 func NewServer(config Config) *Server {
 	return &Server{
-		Routes: make(map[string]Route),
+		routes: make(map[string]Route),
 		Config: config,
 	}
 }
@@ -232,10 +228,6 @@ func (s *Server) writeResponse(c net.Conn, resp *Response) error {
 }
 
 func (s *Server) handleConn(c net.Conn) error {
-	// TODO: Construct Request object aka parse the request
-	// TODO: Decide which route should handle given request
-	// TODO: Execute the handler func for the given request and write the response
-
 	defer c.Close()
 
 	request, err := s.parseRequest(c)
@@ -245,7 +237,11 @@ func (s *Server) handleConn(c net.Conn) error {
 	}
 	defer request.Body.Close()
 
-	// find the correct method
+	method, ok := s.routes[request.Path]
+	if !ok {
+		return s.writeResponse(c, NotFoundResponse)
+	}
 
-	return nil
+	response := method.HandleFunc(request)
+	return s.writeResponse(c, response)
 }
