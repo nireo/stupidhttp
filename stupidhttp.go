@@ -2,6 +2,7 @@ package stupidhttp
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -57,11 +58,14 @@ type Route struct {
 type Config struct {
 	MaxHeaderSize int
 	Address       string
+	TLSCertFile   string
+	TLSKeyFile    string
 }
 
 type Server struct {
-	routes map[string]Route
-	Config Config
+	routes    map[string]Route
+	Config    Config
+	tlsConfig *tls.Config
 }
 
 func (s *Server) AddHandler(path string, handlerFunc HandleFunc) {
@@ -70,15 +74,35 @@ func (s *Server) AddHandler(path string, handlerFunc HandleFunc) {
 	}
 }
 
-func NewServer(config Config) *Server {
-	return &Server{
+func NewServer(config Config) (*Server, error) {
+	server := &Server{
 		routes: make(map[string]Route),
 		Config: config,
 	}
+
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(config.TLSCertFile, config.TLSKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load tls cert and key: %w", err)
+		}
+
+		server.tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+	}
+
+	return server, nil
 }
 
 func (s *Server) Start() error {
-	l, err := net.Listen("tcp", s.Config.Address)
+	var l net.Listener
+	var err error
+
+	if s.tlsConfig != nil {
+		l, err = tls.Listen("tcp", s.Config.Address, s.tlsConfig)
+	} else {
+		l, err = net.Listen("tcp", s.Config.Address)
+	}
 	if err != nil {
 		return err
 	}

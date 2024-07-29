@@ -99,7 +99,11 @@ func TestIntegrationTest(t *testing.T) {
 		Address:       "localhost:8080",
 	}
 
-	server := NewServer(config)
+	server, err := NewServer(config)
+	if err != nil {
+		t.Errorf("server failed to start: %v", err)
+	}
+
 	server.AddHandler("/test", func(req *Request) *Response {
 		return &Response{
 			StatusCode: 200,
@@ -165,6 +169,7 @@ func testGetRequest(t *testing.T) {
 		t.Errorf("Expected body 'Hello, world!', got '%s'", string(body))
 	}
 }
+
 func testPOSTRequest(t *testing.T) {
 	postBody := "This is a test POST body"
 	resp, err := http.Post("http://localhost:8080/echo", "text/plain", strings.NewReader(postBody))
