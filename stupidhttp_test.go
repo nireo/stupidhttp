@@ -136,6 +136,8 @@ func TestIntegrationTest(t *testing.T) {
 		testFunc func(t *testing.T)
 	}{
 		{"get request", testGetRequest},
+		{"post request", testPOSTRequest},
+		{"path not found", test404NotFound},
 	}
 
 	for _, integrationTest := range integrationTests {
@@ -161,5 +163,38 @@ func testGetRequest(t *testing.T) {
 
 	if string(body) != "Hello, world!" {
 		t.Errorf("Expected body 'Hello, world!', got '%s'", string(body))
+	}
+}
+func testPOSTRequest(t *testing.T) {
+	postBody := "This is a test POST body"
+	resp, err := http.Post("http://localhost:8080/echo", "text/plain", strings.NewReader(postBody))
+	if err != nil {
+		t.Fatalf("Failed to send POST request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if string(body) != postBody {
+		t.Errorf("Expected body '%s', got '%s'", postBody, string(body))
+	}
+}
+
+func test404NotFound(t *testing.T) {
+	resp, err := http.Get("http://localhost:8080/nonexistent")
+	if err != nil {
+		t.Fatalf("Failed to send GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("Expected status code 404, got %d", resp.StatusCode)
 	}
 }
