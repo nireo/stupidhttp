@@ -3,6 +3,7 @@ package stupidhttp
 import (
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -90,3 +91,75 @@ func (m *mockConn) RemoteAddr() net.Addr               { return nil }
 func (m *mockConn) SetDeadline(t time.Time) error      { return nil }
 func (m *mockConn) SetReadDeadline(t time.Time) error  { return nil }
 func (m *mockConn) SetWriteDeadline(t time.Time) error { return nil }
+
+func TestIntegrationTest(t *testing.T) {
+	// use net/http to test that the http stuff actually works
+	config := Config{
+		MaxHeaderSize: 1024,
+		Address:       "localhost:8080",
+	}
+
+	server := NewServer(config)
+	server.AddHandler("/test", func(req *Request) *Response {
+		return &Response{
+			StatusCode: 200,
+			Status:     "OK",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Headers:    map[string]string{"Content-Type": "text/plain"},
+			Body:       io.NopCloser(strings.NewReader("Hello, world!")),
+		}
+	})
+
+	server.AddHandler("/echo", func(req *Request) *Response {
+		body, _ := io.ReadAll(req.Body)
+		return &Response{
+			StatusCode: 200,
+			Status:     "OK",
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Headers:    map[string]string{"Content-Type": "text/plain"},
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+		}
+	})
+
+	go func() {
+		err := server.Start()
+		if err != nil {
+			t.Errorf("server failed to start: %v", err)
+		}
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	integrationTests := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{"get request", testGetRequest},
+	}
+
+	for _, integrationTest := range integrationTests {
+		t.Run(integrationTest.name, integrationTest.testFunc)
+	}
+}
+
+func testGetRequest(t *testing.T) {
+	resp, err := http.Get("http://localhost:8080/test")
+	if err != nil {
+		t.Fatalf("Failed to send GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status code 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if string(body) != "Hello, world!" {
+		t.Errorf("Expected body 'Hello, world!', got '%s'", string(body))
+	}
+}
