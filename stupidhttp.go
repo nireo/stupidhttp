@@ -172,6 +172,7 @@ func (s *Server) parseRequest(c net.Conn) (*Request, error) {
 		Headers:    headers,
 		Method:     method,
 		ProtoMajor: major,
+		Path:       splitted[1],
 		ProtoMinor: minor,
 	}, nil
 }
