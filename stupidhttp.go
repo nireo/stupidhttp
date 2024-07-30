@@ -22,6 +22,15 @@ var (
 		ProtoMajor: 1,
 		ProtoMinor: 1,
 		Headers:    map[string]string{"Content-Type": "text/plain"},
+		Body:       io.NopCloser(strings.NewReader("Not Found")),
+	}
+	BadRequestResponse = &Response{
+		StatusCode: 400,
+		Status:     "Bad Request",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Headers:    map[string]string{"Content-Type": "text/plain"},
+		Body:       io.NopCloser(strings.NewReader("Bad Request")),
 	}
 )
 
@@ -257,8 +266,7 @@ func (s *Server) handleConn(c net.Conn) error {
 
 	request, err := s.parseRequest(c)
 	if err != nil {
-		// TODO: return p
-		return err
+		return s.writeResponse(c, BadRequestResponse)
 	}
 	defer request.Body.Close()
 
@@ -269,4 +277,38 @@ func (s *Server) handleConn(c net.Conn) error {
 
 	response := method.HandleFunc(request)
 	return s.writeResponse(c, response)
+}
+
+func cleanPath(path string) string {
+	if path == "" {
+		return "/"
+	}
+
+	pathSize := len(path)
+	buffer := make([]byte, 0, 128) // buffer to store the result for efficiency reasons do it like this
+	r := 1                         // read index
+	w := 1                         // write index
+
+	if path[0] != '/' {
+		r = 0
+
+		if pathSize+1 > 128 {
+			buffer = make([]byte, pathSize+1)
+		} else {
+			buffer = buffer[:pathSize+1]
+		}
+
+		buffer[0] = '/'
+	}
+
+	hasTrailingSlash := pathSize > 1 && path[pathSize-1] == '/'
+	for r < pathSize { // while the read pointer is valid
+		switch {
+		case path[r] == '/':
+			r++
+		case path[r] == '/' && r+1 == pathSize:
+			hasTrailingSlash = true
+			r++
+		}
+	}
 }
