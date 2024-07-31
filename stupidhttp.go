@@ -7,12 +7,15 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 )
 
+// MethodType signifies the HTTP method of the request
 type MethodType int
 
+// HandleFunc is a function that the user writes to handle a given request for a path
 type HandleFunc func(*Request) *Response
 
 var (
@@ -42,6 +45,7 @@ const (
 	MethodUnrecognized
 )
 
+// Request is the result that is parsed from the HTTP request.
 type Request struct {
 	Headers    map[string]string
 	Body       io.ReadCloser
@@ -51,6 +55,7 @@ type Request struct {
 	Path       string
 }
 
+// Response is used to write the correct data to a given response.
 type Response struct {
 	Headers    map[string]string
 	StatusCode int
@@ -58,6 +63,20 @@ type Response struct {
 	Body       io.ReadCloser
 	ProtoMajor int
 	ProtoMinor int
+}
+
+func (r *Response) SetRedirect(path string, statusCode int) {
+	r.Status = http.StatusText(statusCode)
+	r.StatusCode = statusCode
+	r.Headers["Location"] = path
+}
+
+func (r *Response) SetHeader(key, value string) {
+	if r.Headers == nil {
+		r.Headers = make(map[string]string)
+	}
+
+	r.Headers[key] = value
 }
 
 type Route struct {
@@ -279,36 +298,36 @@ func (s *Server) handleConn(c net.Conn) error {
 	return s.writeResponse(c, response)
 }
 
-func cleanPath(path string) string {
-	if path == "" {
-		return "/"
-	}
+// func cleanPath(path string) string {
+// 	if path == "" {
+// 		return "/"
+// 	}
 
-	pathSize := len(path)
-	buffer := make([]byte, 0, 128) // buffer to store the result for efficiency reasons do it like this
-	r := 1                         // read index
-	w := 1                         // write index
+// 	pathSize := len(path)
+// 	buffer := make([]byte, 0, 128) // buffer to store the result for efficiency reasons do it like this
+// 	r := 1                         // read index
+// 	w := 1                         // write index
 
-	if path[0] != '/' {
-		r = 0
+// 	if path[0] != '/' {
+// 		r = 0
 
-		if pathSize+1 > 128 {
-			buffer = make([]byte, pathSize+1)
-		} else {
-			buffer = buffer[:pathSize+1]
-		}
+// 		if pathSize+1 > 128 {
+// 			buffer = make([]byte, pathSize+1)
+// 		} else {
+// 			buffer = buffer[:pathSize+1]
+// 		}
 
-		buffer[0] = '/'
-	}
+// 		buffer[0] = '/'
+// 	}
 
-	hasTrailingSlash := pathSize > 1 && path[pathSize-1] == '/'
-	for r < pathSize { // while the read pointer is valid
-		switch {
-		case path[r] == '/':
-			r++
-		case path[r] == '/' && r+1 == pathSize:
-			hasTrailingSlash = true
-			r++
-		}
-	}
-}
+// 	hasTrailingSlash := pathSize > 1 && path[pathSize-1] == '/'
+// 	for r < pathSize { // while the read pointer is valid
+// 		switch {
+// 		case path[r] == '/':
+// 			r++
+// 		case path[r] == '/' && r+1 == pathSize:
+// 			hasTrailingSlash = true
+// 			r++
+// 	}
+// 	return ""
+// }
